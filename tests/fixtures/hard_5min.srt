@@ -1,0 +1,328 @@
+1
+00:00:02,000 --> 00:00:03,100
+Shields up.
+
+2
+00:00:03,100 --> 00:00:04,200
+Come about, now.
+
+3
+00:00:04,200 --> 00:00:05,300
+He's closing fast.
+
+4
+00:00:05,300 --> 00:00:06,400
+Report status.
+
+5
+00:00:06,400 --> 00:00:07,500
+No answer yet.
+
+6
+00:00:07,500 --> 00:00:08,600
+We're hit!
+
+7
+00:00:08,600 --> 00:00:09,700
+Hold steady.
+
+8
+00:00:09,700 --> 00:00:10,800
+Fire at will.
+
+9
+00:00:10,800 --> 00:00:11,900
+It's a trap.
+
+10
+00:00:11,900 --> 00:00:13,000
+Fall back now.
+
+11
+00:00:13,000 --> 00:00:14,100
+Systems online.
+
+12
+00:00:14,100 --> 00:00:15,200
+Copy that.
+
+13
+00:00:15,200 --> 00:00:16,300
+Stand by.
+
+14
+00:00:16,300 --> 00:00:17,400
+Go, go, go.
+
+15
+00:00:17,400 --> 00:00:18,500
+They're gone.
+
+16
+00:00:18,500 --> 00:00:19,600
+Clear the deck.
+
+17
+00:00:19,900 --> 00:00:22,700
+The diagnostics keep reporting the same intermittent fault in the port stabiliser.
+
+18
+00:00:23,000 --> 00:00:25,400
+Long-range sensors show a debris field where the relay station used to be, Captain.
+
+19
+00:00:25,700 --> 00:00:28,500
+If we re-route power through the auxiliary conduits we might buy ourselves ten minutes.
+
+20
+00:00:28,800 --> 00:00:31,200
+Their weapons are charged, but they have not locked on and they are holding position.
+
+21
+00:00:31,500 --> 00:00:34,300
+Whatever happened down there, the logs were wiped before anyone thought to look.
+
+22
+00:00:34,600 --> 00:00:37,000
+I want a full inventory of every escape pod and a head count within the hour.
+
+23
+00:00:37,300 --> 00:00:40,100
+The hull temperature is climbing faster than the cooling loop can compensate for.
+
+24
+00:00:40,400 --> 00:00:42,800
+We can take the long way around the nebula, but it adds four days and a lot of fuel.
+
+25
+00:00:43,100 --> 00:00:45,900
+Tell the crew to seal the lower decks; I will not risk anyone on a guess.
+
+26
+00:00:46,200 --> 00:00:48,600
+Comms are back, though the signal keeps breaking up whenever we turn the array.
+
+27
+00:00:48,900 --> 00:00:51,700
+It is quiet out here, which is exactly the part that worries me the most.
+
+28
+00:00:52,000 --> 00:00:54,400
+Run the simulation again, and this time do not optimise for a happy ending.
+
+29
+00:00:55,100 --> 00:01:03,100
+We made it.
+
+30
+00:01:03,500 --> 00:01:11,500
+Quiet.
+
+31
+00:01:11,900 --> 00:01:19,900
+Not yet.
+
+32
+00:01:20,300 --> 00:01:28,300
+Almost there.
+
+33
+00:01:28,700 --> 00:01:36,700
+Listen.
+
+34
+00:01:37,100 --> 00:01:45,100
+Wait.
+
+35
+00:01:45,800 --> 00:01:47,500
+Every single time we push the reactor past eighty percent the secondary manifold fractures in a way the manual swears is impossible, and I am tired of guessing why.
+
+36
+00:01:47,800 --> 00:01:49,500
+The council will demand a full accounting of what we did at the colony, and I would rather hand them a clean record than an explanation nobody in this room believes.
+
+37
+00:01:49,800 --> 00:01:51,500
+There is a difference between a retreat and a rout, and the only thing separating them is whether the people behind you make it back to the ships in time.
+
+38
+00:01:51,800 --> 00:01:53,500
+I have read the telemetry twice, and the numbers do not describe a malfunction; they describe somebody deliberately venting the atmosphere from the observation deck.
+
+39
+00:01:54,100 --> 00:01:55,600
+The transmission was not a distress call at all but a complete manifest of every vessel in the system together with their registry numbers, crew complements, current headings, weapon loadouts, and the exact minute each one is scheduled to leave dock, which means somebody on the inside copied the whole fleet schedule onto a relay that was supposed to have been dark for six years and then chose this precise moment to send it straight to us knowing we would have no time to verify a single word of it.
+
+40
+00:01:56,200 --> 00:01:58,600
+C'est déjà fini — n'est-ce pas ?
+
+41
+00:01:58,900 --> 00:02:01,300
+Preço, saúde, coração… tudo bem.
+
+42
+00:02:01,600 --> 00:02:04,000
+«Guillemets» — em—dash and an ellipsis…
+
+43
+00:02:04,300 --> 00:02:06,700
+Números: 42, 7 %, e #hashtags.
+
+44
+00:02:07,300 --> 00:02:10,300
+Two contacts, bearing zero three five.
+
+45
+00:02:08,100 --> 00:02:11,100
+They're not answering our hails.
+
+46
+00:02:11,500 --> 00:02:13,700
+I keep telling myself that the door at the end of this corridor
+
+47
+00:02:13,900 --> 00:02:16,100
+is just a door, and that whatever is standing behind it
+
+48
+00:02:16,300 --> 00:02:18,500
+has been waiting for us to stop being afraid of it.
+
+49
+00:02:22,600 --> 00:02:26,800
+Engineering reports the starboard coupling is holding, for now, at ninety-one percent.
+
+50
+00:02:27,200 --> 00:02:31,400
+Navigation wants a decision before the next shift change, one way or the other.
+
+51
+00:02:31,800 --> 00:02:36,000
+The mess hall has been converted to a triage bay, which tells you how the day is going.
+
+52
+00:02:36,400 --> 00:02:40,600
+We are running on reserves, and the reserves are running on optimism and cold coffee.
+
+53
+00:02:41,000 --> 00:02:45,200
+Somebody has been siphoning rations from the aft locker, and I intend to find out who.
+
+54
+00:02:45,600 --> 00:02:49,800
+The captain's log ends mid-sentence, which is not the part that frightens me.
+
+55
+00:02:50,200 --> 00:02:54,400
+If the storm holds we can make the crossing before the last of the fuel burns off.
+
+56
+00:02:54,800 --> 00:02:59,000
+Every panel in this corridor is dead, and yet the door at the end still has power.
+
+57
+00:02:59,400 --> 00:03:03,600
+I have been staring at this schematic for six hours and it still makes no sense.
+
+58
+00:03:04,000 --> 00:03:08,200
+The refugees are aboard, accounted for, and asking more questions than we can answer.
+
+59
+00:03:08,600 --> 00:03:12,800
+They will expect a report by morning, so somebody had better invent the truth tonight.
+
+60
+00:03:13,200 --> 00:03:17,400
+Whatever you decide, decide it now, because the window closes in about four minutes.
+
+61
+00:03:17,800 --> 00:03:22,000
+Engineering reports the starboard coupling is holding, for now, at ninety-one percent.
+
+62
+00:03:22,400 --> 00:03:26,600
+Navigation wants a decision before the next shift change, one way or the other.
+
+63
+00:03:27,000 --> 00:03:31,200
+The mess hall has been converted to a triage bay, which tells you how the day is going.
+
+64
+00:03:31,600 --> 00:03:35,800
+We are running on reserves, and the reserves are running on optimism and cold coffee.
+
+65
+00:03:36,200 --> 00:03:40,400
+Somebody has been siphoning rations from the aft locker, and I intend to find out who.
+
+66
+00:03:40,800 --> 00:03:45,000
+The captain's log ends mid-sentence, which is not the part that frightens me.
+
+67
+00:03:45,400 --> 00:03:49,600
+If the storm holds we can make the crossing before the last of the fuel burns off.
+
+68
+00:03:50,000 --> 00:03:54,200
+Every panel in this corridor is dead, and yet the door at the end still has power.
+
+69
+00:03:54,600 --> 00:03:58,800
+I have been staring at this schematic for six hours and it still makes no sense.
+
+70
+00:03:59,200 --> 00:04:03,400
+The refugees are aboard, accounted for, and asking more questions than we can answer.
+
+71
+00:04:03,800 --> 00:04:08,000
+They will expect a report by morning, so somebody had better invent the truth tonight.
+
+72
+00:04:08,400 --> 00:04:12,600
+Whatever you decide, decide it now, because the window closes in about four minutes.
+
+73
+00:04:13,000 --> 00:04:17,200
+Engineering reports the starboard coupling is holding, for now, at ninety-one percent.
+
+74
+00:04:17,600 --> 00:04:21,800
+Navigation wants a decision before the next shift change, one way or the other.
+
+75
+00:04:22,200 --> 00:04:26,400
+The mess hall has been converted to a triage bay, which tells you how the day is going.
+
+76
+00:04:26,800 --> 00:04:31,000
+We are running on reserves, and the reserves are running on optimism and cold coffee.
+
+77
+00:04:31,400 --> 00:04:35,600
+Somebody has been siphoning rations from the aft locker, and I intend to find out who.
+
+78
+00:04:36,000 --> 00:04:40,200
+The captain's log ends mid-sentence, which is not the part that frightens me.
+
+79
+00:04:40,600 --> 00:04:44,800
+If the storm holds we can make the crossing before the last of the fuel burns off.
+
+80
+00:04:45,200 --> 00:04:49,400
+Every panel in this corridor is dead, and yet the door at the end still has power.
+
+81
+00:04:49,800 --> 00:04:54,000
+I have been staring at this schematic for six hours and it still makes no sense.
+
+82
+00:04:57,500 --> 00:05:00,000
+That is the end of the recording.
+

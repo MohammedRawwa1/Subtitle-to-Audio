@@ -1,8 +1,17 @@
-comtypes==1.2.0
+# ---- parsing and audio plumbing ----
 pydub==0.25.1
-pypiwin32==223
-pysub-parser==1.7.0
+pysub-parser==1.7.0        # .sub/.txt fallback; pulls in Unidecode itself
+
+# ---- voices ----
+# Online neural voice (best quality when the endpoint is reachable).
+edge-tts==7.2.8
+
+# Offline neural voice (best without network; needs a voice model, see
+# scripts/download_voice.py). onnxruntime comes with it and is CPU-only.
+piper-tts>=1.2.0
+
+# Offline SAPI/espeak fallback, always available. pyttsx3 already requires
+# comtypes/pywin32 on Windows; they are pinned here only for reproducibility.
 pyttsx3==2.90
-pywin32==306
-Unidecode==1.3.7
-edge-tts==7.2.7
+comtypes==1.2.0; sys_platform == "win32"
+pywin32==306; sys_platform == "win32"

@@ -1,0 +1,15 @@
+# Lint config for this standalone project.
+#
+# It is a separate repo nested inside another checkout; without its own config,
+# running the parent project's linter would apply the parent's stricter rules
+# (Bandit S*, flake8-simplify SIM*) to code that intentionally shells out to
+# ffmpeg and uses best-effort try/except/pass around optional TTS engines.
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+
+[lint.per-file-ignores]
+# Pre-existing standalone helper script (not part of the audio pipeline).
+"srt/converter.py" = ["E501", "UP015", "I001"]
