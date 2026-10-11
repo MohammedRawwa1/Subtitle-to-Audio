@@ -4,6 +4,19 @@ Turn a subtitle file into a voice-over that keeps the subtitle timing: every lin
 spoken at a rate chosen to fit its own time window, so the audio stays on the timeline
 without dragging the voice out or squashing it into a warp.
 
+## Just run it
+
+```bash
+python subtitle_to_audio.py myfile.srt              # -> myfile.m4a, next to the subtitle
+python subtitle_to_audio.py myfile.srt --preview    # first 3 lines only, to check the voice
+python subtitle_to_audio.py myfile.srt --voices     # what this machine can actually speak with
+python subtitle_to_audio.py --guide                 # every option on one page, in the tool
+```
+
+Nothing is required but the subtitle file: the engine is auto-picked, the voice is chosen
+for the text, and the output lands beside the input. Every other choice is a flag you can
+add when you want it — `--guide` prints the whole list, `--voices` prints what is installed.
+
 ## Architecture
 
 Each concern lives in one module, so it can be tested (and replaced) on its own:
@@ -42,6 +55,27 @@ python scripts/download_voice.py --pack   # three offline voices -> models/
 
 More than one model in `models/` means `--auto-speakers` can give each character their
 own offline voice: `--pack` installs one female, one male and one British voice.
+
+### Other languages
+
+Piper voices are not English-only, so a non-English subtitle file works the same way:
+
+```bash
+python scripts/download_voice.py ar_JO-kareem-medium   # 63 MB, one voice
+python subtitle_to_audio.py course.srt --preview       # the Arabic voice is picked automatically
+```
+
+The offline voice is chosen from the subtitles' writing system (Arabic, Cyrillic, Greek,
+CJK, Hebrew, Thai, Devanagari hook into it; Latin prefers English), so installing a
+voice for one language cannot silently re-voice another language's file. `--piper-model`
+still overrides it outright.
+
+Measured on three Arabic cues (Arabic-Indic digits in the timestamps included): 3/3 units
+spoken, 11.0 s for an 11.0 s timeline, median pitch 113 Hz, 10.6 semitones of range,
+82.5% voiced frames, no clipping. If you ask a voice to speak a language it does not have
+(an English voice reading Arabic, say), it returns a valid but **silent** file — that is
+now reported as `silent renders` and fails `--strict` instead of quietly filling the
+timeline with nothing.
 
 ## Reproducibility
 
@@ -86,22 +120,27 @@ clipping -- so a regression in voice quality has somewhere to show up.
 ## Usage
 
 ```bash
-python subtitle_to_audio.py -p tests/fixtures/test.srt -f m4a
-python subtitle_to_audio.py -p movie.vtt --overflow bleed --report movie.json
-python subtitle_to_audio.py -p show.ass --engine piper --auto-speakers --deterministic
-python subtitle_to_audio.py -p talk.srt --lexicon names.json --say "nginx=engine x"
-python subtitle_to_audio.py -p two-hander.srt --auto-speakers --music bed.mp3 --metrics
+python subtitle_to_audio.py movie.srt                     # the simple case
+python subtitle_to_audio.py movie.srt --preview 8         # first 8 cues only
+python subtitle_to_audio.py movie.srt --strict --report movie.json --metrics
+python subtitle_to_audio.py movie.vtt --overflow bleed    # let long lines run past their cue
+python subtitle_to_audio.py show.ass --auto-speakers --deterministic   # one voice per speaker
+python subtitle_to_audio.py talk.srt --lexicon names.json --say "nginx=engine x"
+python subtitle_to_audio.py two-hander.srt --music bed.mp3 --music-volume 0.2
 ```
 
 ### Options
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-p`, `--path` | Subtitle file (`.srt`, `.vtt`, `.ass`, `.ssa`, `.sub`, `.txt`) | *required* |
+| *(positional)*, `-p`, `--path` | Subtitle file (`.srt`, `.vtt`, `.ass`, `.ssa`, `.sub`, `.txt`) | *required* |
 | `-f`, `--format` | Output: `wav`, `mp3`, `m4a`, `ogg` | `m4a` |
+| `--preview [N]` | Speak only the first N cues, write `<name>.preview.<ext>` | off (`3` when bare) |
+| `--voices` | List the voices installed on this machine and exit | off |
+| `--guide` | Print every option on one page and exit | off |
 | `--engine` | `auto`, `edge_tts`, `piper`, `pyttsx3` | `auto` |
 | `--voice` | edge_tts voice ShortName | `en-US-JennyNeural` |
-| `--piper-model` | piper `.onnx` voice (else `$PIPER_MODEL` or `models/*.onnx`) | auto |
+| `--piper-model` | piper `.onnx` voice (else `$PIPER_MODEL`, else the installed voice matching the subtitles' language) | auto |
 | `--piper-noise` / `--piper-noise-w` | piper expressiveness / rhythm noise | model values |
 | `--deterministic` | turn piper's duration noise off so re-runs match | off |
 | `--edge-proxy` | proxy URL for the online engine (else `$EDGE_TTS_PROXY`, `$HTTPS_PROXY`) | – |
@@ -158,8 +197,8 @@ python subtitle_to_audio.py -p two-hander.srt --auto-speakers --music bed.mp3 --
 ## Report
 
 Every run ends with a summary: units, cues covered, engine actually used, renders,
-cache hits, fit ratios, cuts, bleeds, loudness mode, and whether the renders were
-repeatable. `--metrics` adds onset alignment (units matched, within 150 ms,
+cache hits, fit ratios, cuts, bleeds, silent renders, loudness mode, and whether the
+renders were repeatable. `--metrics` adds onset alignment (units matched, within 150 ms,
 median/mean/max offset, and how many units had no detectable onset — those are excluded
 rather than matched to a distant neighbour). `--report out.json` writes the same data
 plus per-unit detail, through a staging file and a rename, so a crash cannot leave a
@@ -169,6 +208,12 @@ truncated report behind.
 
 - One line failing on one engine falls back to the next engine, and a line that fails
   everywhere is skipped, reported, and fails `--strict` — it never ends the run.
+- A render that comes back **silent** (the voice cannot speak that language) is counted,
+  printed, tagged `SILENT`, and fails `--strict` — not passed off as audio.
+- Non-Latin subtitles cannot crash a redirected run: output is re-encoded as UTF-8, so
+  Arabic/Cyrillic/CJK text survives `> log.txt` on a Windows console codepage.
+- Silent input cannot break the loudness pass: a `-inf` measurement falls back to
+  one-pass normalization instead of an ffmpeg failure.
 - An unreachable online engine is detected by a startup probe, not three lines in.
 - A corrupt or truncated cache entry is re-rendered instead of failing the line.
 - Fresh renders, cache entries, reports and the exported audio are all written through
@@ -232,3 +277,5 @@ ruff check .
 - Naturalness is measured, not judged: register, pitch range, pacing, clipping and
   loudness are reported and regression-tested, but which voice sounds right to a
   listener is still a listening decision.
+- One voice speaks one language: a mismatch produces silence, which is reported rather
+  than hidden. Download the voice that matches the subtitles.

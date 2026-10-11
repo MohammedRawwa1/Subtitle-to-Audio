@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -17,6 +18,7 @@ from pydub import AudioSegment
 
 __all__ = [
     "trim_trailing_silence",
+    "is_silent",
     "stretch_audio",
     "compress_to_fit",
     "level_segment",
@@ -29,6 +31,7 @@ __all__ = [
     "MAX_LEVEL_GAIN_DB",
     "PEAK_CEILING_DBFS",
     "ATEMPO_MAX_RATIO",
+    "SILENCE_FLOOR_DBFS",
     "LOUDNESS_TARGET",
 ]
 
@@ -38,6 +41,7 @@ TARGET_SEGMENT_DBFS = -20.0      # every line is matched to this RMS
 MAX_LEVEL_GAIN_DB = 12.0         # never lift a near-silent artifact into noise
 PEAK_CEILING_DBFS = -1.0         # levelling must leave this much peak headroom
 ATEMPO_MAX_RATIO = 8.0           # bound for --overflow compress
+SILENCE_FLOOR_DBFS = -60.0       # below this there is no speech worth placing
 
 # EBU R128 target for the final mix. Two-pass is used so the result actually
 # lands on the target instead of "close enough" (single-pass loudnorm adapts
@@ -156,6 +160,23 @@ def compress_to_fit(audio_segment: AudioSegment, target_duration_ms, max_ratio: 
 
 # ------------------------------------------------------------------- levelling
 
+def is_silent(segment: AudioSegment) -> bool:
+    """True when a render carries no speech at all.
+
+    An engine asked to speak a language it does not have (an English voice reading
+    Arabic, a SAPI voice with no such voice installed) can return a perfectly valid
+    but silent file. That must be reported as a failure to speak, not passed off as
+    audio that happens to sit in the timeline.
+    """
+    try:
+        if len(segment) == 0:
+            return True
+        dbfs = segment.dBFS
+        return dbfs == float("-inf") or dbfs < SILENCE_FLOOR_DBFS
+    except Exception:
+        return False
+
+
 def level_segment(segment: AudioSegment) -> AudioSegment:
     """Even out per-line loudness so every cue sits at the same level.
 
@@ -205,7 +226,7 @@ def measure_loudness(path: str) -> dict | None:
         return None
     try:
         data = json.loads(match.group(0))
-        return {
+        measured = {
             "input_i": float(data["input_i"]),
             "input_tp": float(data["input_tp"]),
             "input_lra": float(data["input_lra"]),
@@ -214,13 +235,18 @@ def measure_loudness(path: str) -> dict | None:
         }
     except (ValueError, KeyError, TypeError):
         return None
+    # Silence (or near-silence) measures as -inf, and feeding that back into the
+    # filter makes ffmpeg fail with "Result too large". Two-pass needs real numbers.
+    if not all(math.isfinite(value) for value in measured.values()):
+        return None
+    return measured
 
 
 def loudnorm_filter(measured: dict | None) -> str:
     """Build the loudnorm filter, two-pass when measurements are available."""
     base = (f"loudnorm=I={LOUDNESS_TARGET['I']}:TP={LOUDNESS_TARGET['TP']}:"
             f"LRA={LOUDNESS_TARGET['LRA']}")
-    if not measured:
+    if not measured or not all(math.isfinite(value) for value in measured.values()):
         return base
     return (
         f"{base}:measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"

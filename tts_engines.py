@@ -43,6 +43,8 @@ __all__ = [
     "detect_voice_gender",
     "find_piper_model",
     "find_piper_models",
+    "detect_language",
+    "order_piper_models",
 ]
 
 CACHE_VERSION = 2              # bump to invalidate stale cached renders
@@ -129,27 +131,75 @@ def pick_auto_voice(text: str, gender: str = None) -> str:
         return EDGE_VOICE_DEFAULT
 
 
-def find_piper_models(explicit: str = None) -> list[str]:
+# Writing systems -> the language code piper voices use. Latin (and anything not
+# listed) returns None, which is treated as "prefer English".
+SCRIPT_LANGUAGES = (
+    (re.compile(r"[\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeff]"), "ar"),
+    (re.compile(r"[\u0590-\u05ff]"), "he"),
+    (re.compile(r"[\u0400-\u04ff]"), "ru"),
+    (re.compile(r"[\u0370-\u03ff]"), "el"),
+    (re.compile(r"[\u4e00-\u9fff]"), "zh"),
+    (re.compile(r"[\u3040-\u30ff]"), "ja"),
+    (re.compile(r"[\uac00-\ud7af\u1100-\u11ff]"), "ko"),
+    (re.compile(r"[\u0e00-\u0e7f]"), "th"),
+    (re.compile(r"[\u0900-\u097f]"), "hi"),
+)
+
+
+def detect_language(text: str, sample: int = 4000) -> str | None:
+    """Guess the language from the writing system: None means Latin/unknown.
+
+    Script is enough to pick a voice: an Arabic file must not be read by an English
+    voice, and vice versa. It is a hint, never a hard requirement -- an explicit
+    --piper-model always wins.
+    """
+    if not text:
+        return None
+    head = text[:sample]
+    found = {code: len(pattern.findall(head)) for pattern, code in SCRIPT_LANGUAGES}
+    found = {code: count for code, count in found.items() if count}
+    return max(found, key=found.get) if found else None
+
+
+def order_piper_models(models: list[str], preferred: str = "en") -> list[str]:
+    """Voices for `preferred` first, the rest behind them as fallbacks."""
+    prefix = f"{preferred.lower()}_"
+
+    def key(path: str):
+        return (0 if os.path.basename(path).lower().startswith(prefix) else 1, path)
+
+    return sorted(models, key=key)
+
+
+def find_piper_models(explicit: str = None, prefer_lang: str = None) -> list[str]:
     """Every usable piper voice: an explicit path first, then models/*.onnx.
 
-    More than one model means multi-voice is possible offline: the speaker pool is
-    filled from these, so a two-hander can have two offline neural voices.
+    Discovered voices are ordered so ones matching `prefer_lang` (the subtitles'
+    script) come first, then English, then the rest -- so installing a voice for
+    another language cannot silently change the voice of an English file. More than
+    one model means multi-voice is possible offline: the speaker pool is filled from
+    these, so a two-hander can have two offline neural voices.
     """
-    models: list[str] = []
+    pinned: list[str] = []
     for candidate in (explicit, os.getenv("PIPER_MODEL")):
         if candidate and os.path.exists(candidate):
-            models.append(os.path.abspath(candidate))
+            resolved = os.path.abspath(candidate)
+            if resolved not in pinned:
+                pinned.append(resolved)
+
+    discovered: list[str] = []
     for directory in (PIPER_DEFAULT_DIR, os.path.expanduser("~/.local/share/piper")):
-        for found in sorted(glob.glob(os.path.join(directory, "**", "*.onnx"), recursive=True)):
+        for found in glob.glob(os.path.join(directory, "**", "*.onnx"), recursive=True):
             resolved = os.path.abspath(found)
-            if resolved not in models:
-                models.append(resolved)
-    return models
+            if resolved not in pinned and resolved not in discovered:
+                discovered.append(resolved)
+
+    return pinned + order_piper_models(discovered, preferred=prefer_lang or "en")
 
 
-def find_piper_model(explicit: str = None) -> str | None:
+def find_piper_model(explicit: str = None, prefer_lang: str = None) -> str | None:
     """The default piper voice (first of `find_piper_models`)."""
-    models = find_piper_models(explicit)
+    models = find_piper_models(explicit, prefer_lang=prefer_lang)
     return models[0] if models else None
 
 

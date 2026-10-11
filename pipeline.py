@@ -26,6 +26,7 @@ from audio_post import (
     LOUDNESS_TARGET,
     compress_to_fit,
     export_audio,
+    is_silent,
     level_segment,
     stretch_audio,
     trim_trailing_silence,
@@ -45,6 +46,7 @@ from tts_engines import (
     RenderCache,
     build_chain,
     describe_engines,
+    detect_language,
     filter_reachable,
     find_piper_models,
     first_guess_speed,
@@ -214,6 +216,7 @@ async def _fit_with_engine(engine, unit, voice: str, *, tolerance: float, fit_at
 async def generate_audio(
     path: str,
     *,
+    preview: int = None,
     voice: str = None,
     gender: str = "female",
     output_format: str = "m4a",
@@ -296,6 +299,13 @@ async def generate_audio(
         print(f"Cannot read {path}: {e}")
         return None
 
+    preview_cues = None
+    if preview:
+        preview_cues = max(1, int(preview))
+        loaded.cues = loaded.cues[:preview_cues]
+        print(f"Preview: speaking the first {len(loaded.cues)} cue(s) so this can be checked "
+              f"in seconds")
+
     if lexicon:
         for cue in loaded.cues:
             cue.text = apply_lexicon(cue.text, lexicon)
@@ -306,14 +316,22 @@ async def generate_audio(
     for note in loaded.repairs:
         print(f"  repaired: {note}")
 
-    piper_models = find_piper_models(piper_model)
+    # Pick the offline voice by the subtitles' writing system, so a voice installed for
+    # one language cannot silently read another language's file.
+    lang_hint = detect_language(" ".join(cue.text for cue in loaded.cues))
+    piper_models = find_piper_models(piper_model, prefer_lang=lang_hint)
+    default_piper = piper_models[0] if piper_models else piper_model
+    if default_piper and len(piper_models) > 1:
+        why = f"matches the {lang_hint} text" if lang_hint else "Latin text prefers English"
+        print(f"Piper voice: {os.path.basename(default_piper)} ({why}; "
+              f"{len(piper_models)} installed)")
     try:
         chain = build_chain(
             engine,
             base_speed=base_speed,
             max_speed=speed_ceiling,
             edge_retries=engine_retries,
-            piper_model=piper_model,
+            piper_model=default_piper,
             base_wpm=pyttsx3_rate_wpm,
             max_wpm=max_pyttsx3_wpm,
             edge_proxy=edge_proxy,
@@ -369,6 +387,7 @@ async def generate_audio(
 
     voices = _speaker_voice_map(units, chain[0].name, voice, speaker_voices, auto_speakers,
                                 piper_models=piper_models or ())
+    piper_model = default_piper or piper_model
     for name, hint in voices.items():
         print(f"  speaker {name} -> {hint or chain[0].name + ' default'}")
     if speaker_voices:
@@ -450,6 +469,14 @@ async def generate_audio(
             if level:
                 audio = level_segment(audio)
 
+            # An engine that cannot speak the text (wrong-language voice, or SAPI with
+            # that language absent) returns a valid but silent file. Say so instead of
+            # silently placing nothing on the timeline.
+            silent = is_silent(audio)
+            if silent:
+                print(f"  [{i + 1}/{len(units)}] the engine returned silence for this line "
+                      f"(voice cannot speak this text?)")
+
             speech_ms = len(audio)
             safety_applied = False
             if speech_ms > window_ms and allow_stretch and max_speed is not None:
@@ -487,6 +514,8 @@ async def generate_audio(
 
             fit_ratio = (speech_ms / window_ms) if window_ms else 0.0
             tags = []
+            if silent:
+                tags.append("SILENT")
             if unit.stitched:
                 tags.append(f"STITCH({len(unit.cues)})")
             if unit.speaker:
@@ -530,6 +559,7 @@ async def generate_audio(
                 "cached": result["cached"],
                 "fit": round(fit_ratio, 4),
                 "tags": tags,
+                "silent": silent,
                 "cut_ms": clipped,
                 "bleed_ms": bled,
                 "overlap_trim_ms": overlap_trimmed,
@@ -539,7 +569,9 @@ async def generate_audio(
     if len(output) < total_duration_ms:
         output = output + AudioSegment.silent(duration=total_duration_ms - len(output))
 
-    output_path = os.path.splitext(path)[0] + FORMATS[output_format]["ext"]
+    stem = os.path.splitext(path)[0]
+    output_path = (f"{stem}.preview{FORMATS[output_format]['ext']}" if preview_cues
+                   else stem + FORMATS[output_format]["ext"])
     export_info = export_audio(
         output, output_path, output_format,
         loudnorm=loudnorm, music=music, music_volume=music_volume,
@@ -568,7 +600,7 @@ async def generate_audio(
         chain=chain, cache_store=cache_store, export_info=export_info,
         voices=voices, lexicon=lexicon, fallback_used=fallback_used,
         overlap=overlap, overflow=overflow, stitch=stitch, metrics=metrics,
-        strict=strict, music=music,
+        strict=strict, music=music, preview_cues=preview_cues,
         piper_noise=piper_noise, piper_noise_w=piper_noise_w,
         byte_identical=byte_identical,
     )
@@ -604,12 +636,13 @@ def _write_report(path: str, report: dict) -> None:
 
 def _build_report(loaded, units, records, output, total_duration_ms, output_path, output_format,
                   *, chain, cache_store, export_info, voices, lexicon, fallback_used,
-                  overlap, overflow, stitch, metrics, strict, music,
+                  overlap, overflow, stitch, metrics, strict, music, preview_cues=None,
                   piper_noise=None, piper_noise_w=None, byte_identical=False) -> dict:
     fits = [r["fit"] for r in records] or [0.0]
     cuts = [(r["unit"], r["cut_ms"]) for r in records if r["cut_ms"]]
     bleeds = [(r["unit"], r["bleed_ms"]) for r in records if r["bleed_ms"]]
     overlap_trims = [(r["unit"], r["overlap_trim_ms"]) for r in records if r["overlap_trim_ms"]]
+    silent_units = [(r["unit"], r["voice"]) for r in records if r["silent"]]
     duration_delta = len(output) - total_duration_ms
 
     report = {
@@ -630,6 +663,7 @@ def _build_report(loaded, units, records, output, total_duration_ms, output_path
         "rate_fitted": sum(1 for r in records if "rate-fit" in r["tags"]),
         "safety_atempo": sum(1 for r in records if "safety-atempo" in r["tags"]),
         "compressed": sum(1 for r in records if any(t.startswith("COMPRESS") for t in r["tags"])),
+        "silent_units": {"count": len(silent_units), "units": silent_units},
         "cuts": {"count": len(cuts), "total_ms": sum(c for _, c in cuts), "units": cuts},
         "bleeds": {"count": len(bleeds), "total_ms": sum(b for _, b in bleeds), "units": bleeds},
         "overlap_trims": {"count": len(overlap_trims), "units": overlap_trims},
@@ -646,6 +680,7 @@ def _build_report(loaded, units, records, output, total_duration_ms, output_path
         },
         "music": music,
         "policies": {"overflow": overflow, "overlap": overlap, "stitch": stitch},
+        "preview_cues": preview_cues,
         "piper": {"noise": piper_noise, "noise_w": piper_noise_w,
                   "deterministic": piper_noise_w == PIPER_DETERMINISTIC_NOISE_W,
                   "byte_identical": byte_identical},
@@ -671,6 +706,9 @@ def _build_report(loaded, units, records, output, total_duration_ms, output_path
         reasons.append(f"duration off by {duration_delta} ms")
     if len(records) != len(units):
         reasons.append(f"{len(units) - len(records)} unit(s) produced no audio")
+    if silent_units:
+        reasons.append(f"{len(silent_units)} unit(s) came back silent "
+                       f"(the voice cannot speak that text?)")
     if not report["export_ok"]:
         reasons.append(f"the mix could not be written to {output_path}")
     alignment = report.get("alignment")
@@ -704,6 +742,9 @@ def _print_report(report: dict) -> None:
         print(f"  bleeding into next  : {report['bleeds']['count']} ({report['bleeds']['total_ms']} ms total)")
     if report["overlap_trims"]["count"]:
         print(f"  overlap trims       : {report['overlap_trims']['count']}")
+    if report["silent_units"]["count"]:
+        print(f"  silent renders      : {report['silent_units']['count']} "
+              f"(check the voice can speak this language)")
     if report["speaker_voices"]:
         print(f"  speaker voices      : {len(report['speaker_voices'])}")
     if report["lexicon_entries"]:

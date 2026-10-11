@@ -59,10 +59,16 @@ def importlib_available(name: str) -> bool:
 
 
 def run_cli(args, cwd=None, timeout=1800):
-    """Run the CLI in a subprocess and return the CompletedProcess."""
+    """Run the CLI in a subprocess and return the CompletedProcess.
+
+    Output goes through a pipe, which is exactly the case that used to crash on
+    non-Latin subtitles (the child inherits the console codepage), so decoding as
+    UTF-8 keeps that path honest instead of hiding it.
+    """
     return subprocess.run(
         [sys.executable, os.path.join(ROOT, "subtitle_to_audio.py"), *args],
         cwd=cwd or ROOT, capture_output=True, text=True, timeout=timeout,
+        encoding="utf-8", errors="replace",
     )
 
 

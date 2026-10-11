@@ -16,7 +16,13 @@ DOCUMENTED_FLAGS = [
     "--no-normalize", "--no-level",
     "--no-loudnorm", "--music", "--music-volume", "--lexicon", "--say", "--concurrency",
     "--cache-dir", "--no-cache", "--clear-cache", "--fallback-after", "--metrics", "--report",
-    "--strict",
+    "--strict", "--preview", "--voices", "--guide",
+]
+
+# The choices a user picks from, which --guide and --help must both spell out.
+DOCUMENTED_CHOICES = [
+    "{auto,edge_tts,piper,pyttsx3}", "{wav,mp3,m4a,ogg}", "{cut,bleed,compress}",
+    "{mix,trim,shift}", "{male,female}",
 ]
 
 
@@ -29,9 +35,105 @@ def test_help_lists_every_documented_flag():
 
 def test_help_documents_the_choices():
     proc = run_cli(["--help"], timeout=120)
-    assert "{cut,bleed,compress}" in proc.stdout
-    assert "{mix,trim,shift}" in proc.stdout
-    assert "{auto,edge_tts,piper,pyttsx3}" in proc.stdout
+    for choice in DOCUMENTED_CHOICES:
+        assert choice in proc.stdout, f"{choice} missing from --help"
+
+
+def test_guide_is_the_one_page_cheat_sheet():
+    """`--guide` is how a user discovers the options without reading the README."""
+    proc = run_cli(["--guide"], timeout=120)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    missing = [flag for flag in DOCUMENTED_FLAGS if flag not in proc.stdout]
+    assert not missing, f"documented but missing from --guide: {missing}"
+    for choice in DOCUMENTED_CHOICES:
+        assert choice in proc.stdout, f"{choice} missing from --guide"
+    assert "START HERE" in proc.stdout
+    assert "download_voice.py" in proc.stdout
+
+
+def test_guide_runs_without_a_subtitle_file_or_ffmpeg():
+    """Discovering the options must not need an input file."""
+    proc = run_cli(["--guide"], timeout=120)
+    assert proc.returncode == 0
+    assert "Traceback" not in proc.stderr
+    assert "the following arguments are required" not in proc.stderr
+
+
+def test_voices_lists_the_choices_and_exits(tmp_path):
+    proc = run_cli(["--voices"], timeout=300)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "Engines" in proc.stdout
+    for engine in ("edge_tts", "piper", "pyttsx3"):
+        assert engine in proc.stdout
+    assert "Add a voice" in proc.stdout
+    assert not list(tmp_path.iterdir())        # listing writes nothing
+
+
+def test_positional_path_is_the_same_as_the_flag(tmp_path):
+    """`subtitle_to_audio.py movie.srt` and `-p movie.srt` must behave alike."""
+    srt = write_srt(str(tmp_path / "p.srt"), [(0, 2200, "The simple form works.")])
+    out = tmp_path / "p.wav"
+
+    positional = run_cli([srt, "-f", "wav"], timeout=600)
+    assert positional.returncode == 0, positional.stdout + positional.stderr
+    assert out.exists()
+    out.unlink()
+
+    flagged = run_cli(["-p", srt, "-f", "wav"], timeout=600)
+    assert flagged.returncode == 0, flagged.stdout + flagged.stderr
+    assert out.exists()
+
+
+def test_no_input_at_all_asks_for_one(tmp_path):
+    proc = run_cli([], timeout=120)
+    assert proc.returncode == 2                       # argparse usage error
+    assert "give the subtitle file" in proc.stderr
+
+
+@needs_engine
+def test_non_latin_subtitles_survive_a_piped_run(tmp_path):
+    """Regression: a redirected run must not die encoding non-Latin text.
+
+    On Windows a redirected stdout used the console codepage, so the per-unit log
+    raised UnicodeEncodeError the moment the line was Arabic (or Cyrillic, or CJK).
+    run_cli pipes the output, which is exactly that case.
+    """
+    path = tmp_path / "ar.srt"
+    path.write_text(
+        "1\n00:00:00,000 --> 00:00:03,000\nمرحباً بكم في الدرس التاسع عشر.\n\n"
+        "2\n00:00:03,200 --> 00:00:06,000\nسنتعرف اليوم على القوائم المنسدلة.\n",
+        encoding="utf-8",
+    )
+    proc = run_cli([str(path), "--preview", "1", "--report", str(tmp_path / "r.json")],
+                   timeout=600)
+    assert "UnicodeEncodeError" not in proc.stdout + proc.stderr
+    assert "Traceback" not in proc.stderr
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "الدرس" in proc.stdout                    # logged, not mangled or dropped
+    assert (tmp_path / "ar.preview.m4a").exists()
+
+
+@needs_engine
+def test_preview_speaks_only_the_first_cues(tmp_path):
+    srt = write_srt(str(tmp_path / "long.srt"), [
+        (0, 2500, "First line of the lecture."),
+        (2700, 5200, "Second line, which the preview should also read."),
+        (5400, 8000, "Third line."),
+        (8200, 11000, "Fourth line, which the preview must skip."),
+    ])
+    report = str(tmp_path / "r.json")
+    proc = run_cli([srt, "--preview", "2", "--report", report], timeout=600)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "Preview: speaking the first 2 cue(s)" in proc.stdout
+    preview = tmp_path / "long.preview.m4a"
+    assert preview.exists() and preview.stat().st_size > 0
+    assert not (tmp_path / "long.m4a").exists()       # the full file is not written
+
+    data = json.loads(open(report, encoding="utf-8").read())
+    assert data["preview_cues"] == 2
+    assert data["units"] == 2
+    assert data["cues"] == 2
+    assert data["final_ms"] == 5200                   # the timeline stops at the last previewed cue
 
 
 def test_missing_subtitle_file_exits_with_a_setup_error(tmp_path):

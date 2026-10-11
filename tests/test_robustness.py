@@ -242,6 +242,63 @@ def test_corrupt_cache_entry_is_recovered(tmp_path):
     assert len(load_rendered(str(repaired))) > 0
 
 
+def test_silence_is_recognised_and_not_reported_as_audio():
+    """An engine that cannot speak the text returns silence; that is not a success."""
+    assert ap.is_silent(AudioSegment.silent(duration=1000))
+    assert ap.is_silent(AudioSegment.silent(duration=0))
+    assert not ap.is_silent(Sine(220).to_audio_segment(duration=500))
+    assert ap.is_silent(Sine(220).to_audio_segment(duration=500).apply_gain(-70))
+
+
+def test_loudnorm_two_pass_is_skipped_when_the_measurement_is_silence():
+    """-inf measurements made ffmpeg fail with "Result too large"; use one pass then."""
+    base = "loudnorm=I=-16.0:TP=-1.5:LRA=11.0"
+    assert ap.loudnorm_filter(None) == base
+    assert ap.loudnorm_filter({"input_i": float("-inf"), "input_tp": 0.0,
+                               "input_lra": 1.0, "input_thresh": -70.0,
+                               "target_offset": 0.0}) == base
+    assert ap.loudnorm_filter({"input_i": float("nan")}) == base
+    assert "measured_I" in ap.loudnorm_filter(
+        {"input_i": -20.0, "input_tp": -3.0, "input_lra": 4.0,
+         "input_thresh": -30.0, "target_offset": 0.5})
+
+
+@needs_ffmpeg
+def test_loudness_of_silence_is_no_measurement(tmp_path):
+    """A silent file has nothing to measure, so two-pass must not be attempted."""
+    path = str(tmp_path / "silent.wav")
+    AudioSegment.silent(duration=1000).export(path, format="wav")
+    assert ap.measure_loudness(path) is None
+    info = ap.export_audio(AudioSegment.silent(duration=1000), str(tmp_path / "s.wav"),
+                           "wav", loudnorm=True)
+    assert info["ok"] is True
+    assert info["two_pass"] is False          # fell back to one pass, not to failure
+    assert os.path.getsize(str(tmp_path / "s.wav")) > 0
+
+
+@needs_engine
+def test_a_silent_render_is_reported_not_passed_off_as_audio(tmp_path, monkeypatch):
+    """End to end: silence from an engine shows up in the report and fails --strict."""
+    srt = write_srt(str(tmp_path / "quiet.srt"), [(0, 2500, "This line comes back silent.")])
+    silent_audio = AudioSegment.silent(duration=2000)
+
+    async def silent_render(*args, **kwargs):
+        return {"audio": silent_audio, "speed": 1.0, "renders": 1, "engine": "piper",
+                "voice": "m", "cached": False}
+
+    monkeypatch.setattr(pipeline, "_fit_with_engine", silent_render)
+    report = asyncio.run(pipeline.generate_audio(
+        path=srt, output_format="wav", engine="auto", strict=True,
+        cache_dir=str(tmp_path / "cache"), report_path=str(tmp_path / "r.json"),
+        overlap="mix", concurrency=1,
+    ))
+    assert report["silent_units"]["count"] == 1
+    assert report["units_detail"][0]["silent"] is True
+    assert "SILENT" in report["units_detail"][0]["tags"]
+    assert report["strict"]["passed"] is False
+    assert any("silent" in reason for reason in report["strict"]["reasons"])
+
+
 def test_cache_put_is_atomic(tmp_path):
     cache = te.RenderCache(str(tmp_path / "cache"))
     source = str(tmp_path / "seg.wav")
@@ -350,8 +407,8 @@ def test_report_flags_a_failed_export_and_fails_the_strict_gate(tmp_path):
     records = [{
         "unit": 1, "cues": [1], "speaker": None, "start_ms": 0, "end_ms": 2000,
         "window_ms": 2000, "engine": "piper", "voice": "m", "speed": 1.0,
-        "renders": 1, "cached": False, "fit": 1.0, "tags": [], "cut_ms": 0,
-        "bleed_ms": 0, "overlap_trim_ms": 0, "stitched": False,
+        "renders": 1, "cached": False, "fit": 1.0, "tags": [], "silent": False,
+        "cut_ms": 0, "bleed_ms": 0, "overlap_trim_ms": 0, "stitched": False,
     }]
     loaded = LoadResult(cues=cues, fmt="srt", encoding="utf-8", path=str(tmp_path / "x.srt"))
     report = pipeline._build_report(
@@ -454,6 +511,61 @@ def test_two_speakers_get_two_real_offline_voices(tmp_path):
     assert [u["voice"] for u in report["units_detail"]] == \
         [voices["NARRATOR"], voices["PILOT"]]
     assert "SPEAKER(NARRATOR)" in report["units_detail"][0]["tags"]
+
+
+def test_language_is_detected_from_the_writing_system():
+    assert te.detect_language("مرحباً بكم في الدرس") == "ar"
+    assert te.detect_language("Привет, как дела") == "ru"
+    assert te.detect_language("こんにちは") == "ja"
+    assert te.detect_language("Hello there") is None        # Latin: no hint, prefer English
+    assert te.detect_language("") is None
+    # The dominant script wins in a mixed line.
+    assert te.detect_language("OK - مرحباً بكم في الدرس التاسع عشر") == "ar"
+
+
+def test_voice_order_prefers_the_subtitle_language_then_english(tmp_path):
+    """Installing a voice for another language must not change an English file's voice."""
+    for name in ("ar_JO-kareem-medium", "en_US-lessac-medium", "tr_TR-dfki-medium"):
+        (tmp_path / f"{name}.onnx").write_bytes(b"x")
+    paths = [str(tmp_path / f"{n}.onnx") for n in
+             ("ar_JO-kareem-medium", "en_US-lessac-medium", "tr_TR-dfki-medium")]
+
+    order = te.order_piper_models(paths, preferred="en")
+    assert os.path.basename(order[0]) == "en_US-lessac-medium.onnx"
+    assert set(order) == set(paths)                          # nothing is dropped
+    assert os.path.basename(te.order_piper_models(paths, "ar")[0]) == "ar_JO-kareem-medium.onnx"
+
+    # An explicit model still wins outright, whatever the language preference.
+    chosen = te.find_piper_models(str(tmp_path / "tr_TR-dfki-medium.onnx"), prefer_lang="ar")
+    assert os.path.basename(chosen[0]) == "tr_TR-dfki-medium.onnx"
+
+
+@needs_engine
+@needs_ffmpeg
+def test_the_offline_voice_follows_the_subtitle_language(tmp_path):
+    """With Arabic and English voices installed, each file gets the matching one."""
+    installed = [os.path.basename(p) for p in te.find_piper_models()]
+    if not any(n.startswith("ar") for n in installed) or not any(n.startswith("en") for n in installed):
+        pytest.skip("needs both an Arabic and an English piper voice")
+
+    arabic = write_srt(str(tmp_path / "ar.srt"), [(0, 3000, "مرحباً بكم في الدرس التاسع عشر.")])
+    english = write_srt(str(tmp_path / "en.srt"), [(0, 3000, "Welcome to the nineteenth lesson.")])
+
+    def voice_for(srt, name):
+        report_path = str(tmp_path / f"{name}.json")
+        proc = run_cli([srt, "-f", "wav", "--preview", "1", "--deterministic",
+                        "--report", report_path])
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        report = json.loads(open(report_path, encoding="utf-8").read())
+        return os.path.basename(report["units_detail"][0]["voice"]), report
+
+    arabic_voice, arabic_report = voice_for(arabic, "ar")
+    english_voice, english_report = voice_for(english, "en")
+
+    assert arabic_voice.startswith("ar"), arabic_report["units_detail"][0]
+    assert english_voice.startswith("en"), english_report["units_detail"][0]
+    assert arabic_report["silent_units"]["count"] == 0
+    assert english_report["silent_units"]["count"] == 0
 
 
 def test_a_machine_without_piper_has_no_voices_to_offer(tmp_path, monkeypatch):

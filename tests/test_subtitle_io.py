@@ -127,6 +127,15 @@ def test_arabic_indic_digits_in_timestamp(tmp_path):
     assert (result.cues[0].start_ms, result.cues[0].end_ms) == (1000, 2000)
 
 
+def test_arabic_text_survives_normalization(tmp_path):
+    """RTL text comes out of normalization untouched: no reordering, no characters lost."""
+    line = "مرحباً بكم في الدرس التاسع عشر."
+    body = f"1\n00:00:00,000 --> 00:00:02,000\n{line}\n"
+    result = S.load_subtitles(write(tmp_path, "rtl.srt", body))
+    assert result.cues[0].text == line
+    assert result.encoding == "utf-8"
+
+
 def test_extension_less_file_is_sniffed(tmp_path):
     result = S.load_subtitles(write(tmp_path, "movie", VTT))
     assert result.fmt == "vtt" and len(result.cues) == 2

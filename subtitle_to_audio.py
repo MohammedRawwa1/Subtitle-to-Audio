@@ -23,16 +23,87 @@ from audio_post import FORMATS
 from pipeline import generate_audio
 from pipeline_core import OVERFLOWS, OVERLAPS
 from tts_engines import (
+    AUTO_VOICES,
     EDGE_VOICE_DEFAULT,
     ENGINE_CLASSES,
     RenderCache,
     find_piper_model,
+    find_piper_models,
 )
 
 EXIT_OK = 0
 EXIT_SETUP_ERROR = 1
 EXIT_STRICT_FAILED = 3
 EXIT_INTERRUPTED = 130
+
+GUIDE = """
+subtitle-to-audio -- the whole thing in one page
+
+START HERE
+  python subtitle_to_audio.py movie.srt                best available voice, m4a next to the file
+  python subtitle_to_audio.py -p movie.srt             same thing (--path, for scripts)
+  python subtitle_to_audio.py movie.srt --preview      first 3 lines only, for a quick listen
+  python subtitle_to_audio.py movie.srt --preview 8    first 8 lines
+  python subtitle_to_audio.py movie.srt --voices       what this machine can actually speak with
+  python subtitle_to_audio.py movie.srt --strict --report out.json --metrics
+
+EVERY CHOICE IS A FLAG -- pick what you want, ignore the rest
+
+  ENGINE AND VOICE
+    --engine {auto,edge_tts,piper,pyttsx3}  auto = best available, then fall back
+    --voice NAME                            edge_tts voice, e.g. en-US-GuyNeural
+    --piper-model PATH                      offline neural voice, e.g. models/ar_JO-kareem-medium.onnx
+    --gender {male,female}                  hint for engines that choose for you
+    --auto-voice                            choose the voice from the subtitle text
+    --speaker-voices NAME=VOICE             one voice per speaker (repeatable or comma separated)
+    --auto-speakers                         rotate voices for "NAME:" labels in the text
+    --piper-noise FLOAT                     piper liveliness (model default is usually 0.667)
+    --piper-noise-w FLOAT                   piper rhythm noise; 0 = repeatable line lengths
+    --deterministic                         reproducible renders (piper duration noise off)
+    --edge-proxy URL                        proxy for the online engine
+
+  TIMING (the point of the tool)
+    --overflow {cut,bleed,compress}         a line too long for its window: trim / run past / squash
+    --max-compress FLOAT                    ceiling for compress before it trims (default 8.0)
+    --overlap {mix,trim,shift}              overlapping cues: mix, trim the earlier, shift the later
+    --base-rate "+0%"                       starting pace; fitting never goes below it
+    --max-rate 30                           fastest the fitter may go (edge_tts percent)
+    --pyttsx3-rate 165  --max-wpm 280       fallback voice base rate / ceiling, in words per minute
+    --max-speed 1.25 --no-stretch           last-resort atempo bound / turn it off
+    --stretch-tolerance 0.05                0.05 = within 5% of the window counts as fitting
+    --fit-attempts 3 --tts-retries 2        renders per line while fitting / online attempts
+    --no-stitch                             keep sentences split across cues separate
+
+  SOUND
+    -f, --format {wav,mp3,m4a,ogg}          output container (default m4a)
+    --no-level                              skip per-line loudness levelling
+    --no-loudnorm                           skip the EBU R128 pass on the mix
+    --music FILE --music-volume 0.25        looped, ducked background bed
+
+  WORDS AND PRONUNCIATION
+    --lexicon names.json                    {"SQL": "sequel", "nginx": "engine x"}
+    --say "nginx=engine x"                  same, inline and repeatable
+    --no-normalize                          keep the raw text (no tag stripping or expansion)
+
+  SPEED, CACHE, QUALITY
+    --concurrency N                         lines rendered in parallel (default is engine-aware)
+    --cache-dir DIR --no-cache --clear-cache
+    --fallback-after 1                      failures before an engine is dropped for the run
+    --preview [N]                           first N cues only (default 3), writes <name>.preview.<ext>
+    --report out.json                       every unit, cut, bleed, fit ratio and loudness figure
+    --metrics                               measure speech-onset alignment in the mix
+    --strict                                exit 3 if the run degraded
+    --voices                                list the voices installed here and exit
+    --guide                                 this page
+    -h, --help                              the raw argparse list
+
+EXIT CODES  0 ok | 1 setup problem or the mix could not be written | 3 --strict failed | 130 interrupted
+
+MORE VOICES  python scripts/download_voice.py en_US-ryan-high
+             python scripts/download_voice.py ar_JO-kareem-medium     # other languages too
+             python scripts/download_voice.py --pack                 # three distinct voices
+             python scripts/benchmark_voices.py                      # measure them instead of guessing
+"""
 
 
 def _parse_pairs(values, flag: str) -> dict:
@@ -73,10 +144,19 @@ def build_parser() -> argparse.ArgumentParser:
             "(edge_tts), an offline neural voice (piper) or an offline SAPI voice."
         )
     )
-    parser.add_argument("-p", "--path", required=True,
-                        help="subtitle file path (.srt, .vtt, .ass, .ssa, .sub, .txt)")
+    parser.add_argument("subtitle", nargs="?",
+                        help="subtitle file (.srt, .vtt, .ass, .ssa, .sub, .txt)")
+    parser.add_argument("-p", "--path",
+                        help="same as the positional path (kept for scripts)")
     parser.add_argument("-f", "--format", choices=list(FORMATS), default="m4a",
                         help="output audio format (default: m4a)")
+    parser.add_argument("--preview", nargs="?", type=int, const=3, metavar="N",
+                        help="speak only the first N cues (default 3) so a long file can be "
+                             "checked in seconds; writes <name>.preview.<ext>")
+    parser.add_argument("--voices", action="store_true",
+                        help="list the voices available on this machine and exit")
+    parser.add_argument("--guide", action="store_true",
+                        help="print every option on one page and exit")
 
     voices = parser.add_argument_group("voices")
     voices.add_argument("--engine", choices=["auto", *ENGINE_CLASSES], default="auto",
@@ -176,8 +256,76 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _list_voices() -> int:
+    """Say what this machine can actually speak with, without rendering anything."""
+    print("Engines")
+    for name, engine_class in ENGINE_CLASSES.items():
+        engine = (engine_class(model=find_piper_model()) if name == "piper"
+                  else engine_class())
+        ok, reason = engine.available()
+        print(f"  {name:9s} {'available  ' if ok else 'unavailable'}: {reason}")
+
+    models = find_piper_models()
+    print(f"\nPiper voices on disk ({len(models)})")
+    for path in models:
+        print(f"  {os.path.basename(path):34s} {os.path.getsize(path) / 1e6:6.1f} MB")
+    if not models:
+        print("  none - run: python scripts/download_voice.py")
+    else:
+        print("  the voice that matches the subtitles' language is chosen automatically;")
+        print("  --piper-model overrides it, --auto-speakers gives each speaker one")
+
+    print("\nedge_tts voices (--auto-voice picks from these)")
+    for gender, names in AUTO_VOICES.items():
+        print(f"  {gender:8s} {', '.join(names)}")
+
+    try:
+        import pyttsx3
+        engine = pyttsx3.init()
+        print("\npyttsx3 (offline SAPI/espeak) voices")
+        for voice in engine.getProperty("voices") or []:
+            print(f"  {voice.id}")
+    except Exception as e:
+        print(f"\npyttsx3: not usable on this machine ({type(e).__name__}: {str(e)[:60]})")
+
+    print("\nThe online engine is only proven reachable when a run starts; a blocked network")
+    print("is skipped then (use --edge-proxy URL if a proxy is available).")
+    print("\nAdd a voice:       python scripts/download_voice.py en_US-ryan-high")
+    print("Other languages:   python scripts/download_voice.py ar_JO-kareem-medium")
+    print("Then choose it:    --piper-model models/ar_JO-kareem-medium.onnx")
+    return EXIT_OK
+
+
+def _make_output_unicode_safe() -> None:
+    """Never die because a subtitle line cannot be encoded in the console codepage.
+
+    On Windows a redirected stdout uses the locale encoding (often cp1252), so the
+    per-unit log would raise UnicodeEncodeError on Arabic, Cyrillic, CJK -- exactly
+    when someone pipes a run to a log file. UTF-8 with replacement keeps the text
+    readable in a file and impossible to crash on.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):   # not a TextIOWrapper
+            continue
+
+
 def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
+    _make_output_unicode_safe()
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.guide:
+        print(GUIDE)
+        return EXIT_OK
+
+    if args.voices:
+        return _list_voices()
+
+    path = args.path or args.subtitle
+    if not path:
+        parser.error("give the subtitle file, e.g.  subtitle_to_audio.py movie.srt")
 
     if args.clear_cache:
         removed = RenderCache(args.cache_dir).clear()
@@ -202,7 +350,7 @@ def main(argv=None) -> int:
     speaker_voices = _parse_pairs(args.speaker_voices, "--speaker-voices")
 
     try:
-        report = asyncio.run(_run(args, lexicon, speaker_voices))
+        report = asyncio.run(_run(args, path, lexicon, speaker_voices))
     except KeyboardInterrupt:
         print("\nInterrupted; the output file was not written.")
         return EXIT_INTERRUPTED
@@ -223,10 +371,11 @@ def main(argv=None) -> int:
     return EXIT_OK
 
 
-async def _run(args, lexicon, speaker_voices):
+async def _run(args, path, lexicon, speaker_voices):
     """Build the call from the parsed arguments and hand it to the pipeline."""
     return await generate_audio(
-        path=args.path,
+        path=path,
+        preview=args.preview,
         voice=None if args.auto_voice else args.voice,
         gender=args.gender,
         output_format=args.format,
@@ -240,7 +389,7 @@ async def _run(args, lexicon, speaker_voices):
         fit_attempts=args.fit_attempts,
         engine=args.engine,
         engine_retries=args.tts_retries,
-        piper_model=find_piper_model(args.piper_model),
+        piper_model=args.piper_model,
         edge_proxy=args.edge_proxy,
         piper_noise=args.piper_noise,
         piper_noise_w=args.piper_noise_w,
