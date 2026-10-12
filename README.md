@@ -119,6 +119,21 @@ clipping -- so a regression in voice quality has somewhere to show up.
 
 ## Usage
 
+# English example
+python subtitle_to_audio.py ".\myfile.srt" --engine edge_tts --voice en-US-JennyNeural --format m4a --preview 8
+
+python subtitle_to_audio.py ".\myfile.srt" --engine edge_tts --voice en-US-JennyNeural --format m4a --max-rate 15 --max-speed 1.10 --overflow bleed --preview 8
+
+python subtitle_to_audio.py ".\myfile.srt" --engine edge_tts --voice en-US-JennyNeural --format m4a --metrics --report ".\myfile-report.json"
+
+python subtitle_to_audio.py ".\myfile.srt" --engine edge_tts --voice en-US-JennyNeural --format m4a --max-rate 15 --max-speed 1.10 --overflow bleed --metrics --report ".\myfile-report.json"
+
+# Arabic example
+python subtitle_to_audio.py ".\myfile.srt" --engine edge_tts --voice ar-SA-ZariyahNeural --format m4a --max-rate 15 --max-speed 1.10 --overflow bleed --preview 8
+
+python subtitle_to_audio.py ".\myfile.srt" --engine edge_tts --voice ar-SA-ZariyahNeural --format m4a --max-rate 15 --max-speed 1.10 --overflow bleed --metrics --report ".\myfile-report.json"
+
+
 ```bash
 python subtitle_to_audio.py movie.srt                     # the simple case
 python subtitle_to_audio.py movie.srt --preview 8         # first 8 cues only

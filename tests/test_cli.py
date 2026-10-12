@@ -5,7 +5,16 @@ import os
 
 import pytest
 
+import subtitle_to_audio as cli
 from tests.conftest import needs_engine, run_cli, write_srt
+
+
+def parser_flags():
+    """Every long option the CLI actually defines, read from the parser itself."""
+    flags = []
+    for action in cli.build_parser()._actions:
+        flags.extend(opt for opt in action.option_strings if opt.startswith("--"))
+    return sorted(set(flags))
 
 DOCUMENTED_FLAGS = [
     "--path", "--format", "--engine", "--voice", "--piper-model", "--gender", "--auto-voice",
@@ -16,7 +25,7 @@ DOCUMENTED_FLAGS = [
     "--no-normalize", "--no-level",
     "--no-loudnorm", "--music", "--music-volume", "--lexicon", "--say", "--concurrency",
     "--cache-dir", "--no-cache", "--clear-cache", "--fallback-after", "--metrics", "--report",
-    "--strict", "--preview", "--voices", "--guide",
+    "--strict", "--preview", "--voices", "--guide", "--help",
 ]
 
 # The choices a user picks from, which --guide and --help must both spell out.
@@ -31,6 +40,20 @@ def test_help_lists_every_documented_flag():
     assert proc.returncode == 0
     missing = [flag for flag in DOCUMENTED_FLAGS if flag not in proc.stdout]
     assert not missing, f"documented but missing from --help: {missing}"
+
+
+def test_the_documented_flag_list_matches_the_parser():
+    """DOCUMENTED_FLAGS is only worth having if it cannot drift from the real CLI."""
+    assert sorted(DOCUMENTED_FLAGS) == parser_flags()
+
+
+def test_guide_covers_every_flag_the_parser_has():
+    """The one-page guide is the promise that a user can find every option."""
+    proc = run_cli(["--guide"], timeout=120)
+    assert proc.returncode == 0
+    missing = [flag for flag in parser_flags() if flag not in proc.stdout]
+    assert not missing, f"the parser has options the guide never mentions: {missing}"
+    assert "--help" in proc.stdout
 
 
 def test_help_documents_the_choices():
