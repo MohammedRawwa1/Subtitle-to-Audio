@@ -4,7 +4,7 @@ pysub-parser==1.7.0        # .sub/.txt fallback; pulls in Unidecode itself
 
 # ---- voices ----
 # Online neural voice (best quality when the endpoint is reachable).
-edge-tts==7.2.8
+edge-tts @ git+https://github.com/jonata/edge-tts.git@8a5844c3a1d33e4e8f2f3e14535542c0d75d4248
 
 # Offline neural voice (best without network; needs a voice model, see
 # scripts/download_voice.py). onnxruntime comes with it and is CPU-only.

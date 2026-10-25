@@ -13,6 +13,10 @@ python subtitle_to_audio.py myfile.srt --voices     # what this machine can actu
 python subtitle_to_audio.py --guide                 # every option on one page, in the tool
 ```
 
+On Windows, run [`batch_srt_to_audio.bat`](./batch_srt_to_audio.bat) to process every
+`.srt` file in the `srt` folder with the `ar-AE-HamdanNeural` voice. Audio files are
+saved beside their subtitles; no reports are generated.
+
 Nothing is required but the subtitle file: the engine is auto-picked, the voice is chosen
 for the text, and the output lands beside the input. Every other choice is a flag you can
 add when you want it — `--guide` prints the whole list, `--voices` prints what is installed.
