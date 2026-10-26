@@ -405,6 +405,8 @@ async def generate_audio(
     failures: dict[str, int] = {e.name: 0 for e in chain}
     fallback_used: set[str] = set()
     semaphore = asyncio.Semaphore(effective_concurrency)
+    engine_condition = asyncio.Condition()
+    active_renders = {e.name: 0 for e in chain}
 
     async def render_unit(index: int, unit):
         hint = voices.get(unit.speaker) if unit.speaker else voice
@@ -413,27 +415,54 @@ async def generate_audio(
         async with semaphore:
             try:
                 for engine_obj in chain:
-                    if engine_obj.name in disabled:
-                        continue
+                    engine_name = engine_obj.name
+                    async with engine_condition:
+                        if engine_name in disabled:
+                            if engine_obj.needs_network:
+                                await engine_condition.wait_for(
+                                    lambda name=engine_name: active_renders[name] == 0)
+                            continue
+                        active_renders[engine_name] += 1
+
                     voice_id = engine_obj.resolve_voice(hint, gender)
-                    result = await _fit_with_engine(
-                        engine_obj, unit, voice_id,
-                        tolerance=tolerance, fit_attempts=fit_attempts,
-                        cache=cache_store, tmpdir=tmpdir, index=index,
-                    )
+                    result = None
+                    completed = False
+                    tripped = False
+                    try:
+                        result = await _fit_with_engine(
+                            engine_obj, unit, voice_id,
+                            tolerance=tolerance, fit_attempts=fit_attempts,
+                            cache=cache_store, tmpdir=tmpdir, index=index,
+                        )
+                        completed = True
+                    finally:
+                        async with engine_condition:
+                            active_renders[engine_name] -= 1
+                            if completed:
+                                if result is not None:
+                                    failures[engine_name] = 0
+                                else:
+                                    failures[engine_name] += 1
+                                    if (failures[engine_name] >= max(1, fallback_after)
+                                            and len(chain) > 1
+                                            and engine_name not in disabled):
+                                        disabled.add(engine_name)
+                                        tripped = True
+                            engine_condition.notify_all()
+
                     if result is not None:
-                        failures[engine_obj.name] = 0
                         if engine_obj is not chain[0]:
                             fallback_used.add(engine_obj.name)
                         result["unit"] = index
                         return result
-                    failures[engine_obj.name] += 1
-                    if failures[engine_obj.name] >= max(1, fallback_after) and len(chain) > 1:
-                        if engine_obj.name not in disabled:
-                            disabled.add(engine_obj.name)
-                            remaining = [e.name for e in chain if e.name not in disabled]
-                            print(f"  {engine_obj.name} failed {failures[engine_obj.name]}x; "
-                                  f"falling back to {remaining[0] if remaining else 'nothing'}")
+                    if tripped:
+                        remaining = [e.name for e in chain if e.name not in disabled]
+                        print(f"  {engine_name} failed {failures[engine_name]}x; "
+                              f"falling back to {remaining[0] if remaining else 'nothing'}")
+                    if engine_name in disabled and engine_obj.needs_network:
+                        async with engine_condition:
+                            await engine_condition.wait_for(
+                                lambda name=engine_name: active_renders[name] == 0)
                 return None
             except Exception as e:
                 # One bad line must never take the run down with it.
@@ -611,6 +640,15 @@ async def generate_audio(
             print(f"  report              : {report_path}")
         except OSError as e:
             print(f"  (could not write report: {e})")
+    delivered = report["export_ok"] and os.path.exists(output_path)
+    strict_passed = not strict or report["strict"]["passed"]
+    if delivered and strict_passed and cache_store.enabled:
+        try:
+            if cache_store.remove_directory():
+                print(f"Render cache removed: {cache_store.directory}")
+        except OSError as e:
+            print(f"Warning: delivered audio, but could not remove render cache "
+                  f"{cache_store.directory}: {e}")
     print("=" * 64)
     return report
 

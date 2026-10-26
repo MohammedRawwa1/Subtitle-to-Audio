@@ -1,13 +1,15 @@
 # ---- parsing and audio plumbing ----
 pydub==0.25.1
 pysub-parser==1.7.0        # .sub/.txt fallback; pulls in Unidecode itself
+numpy>=1.26                 # used directly for voice metrics
 
 # ---- voices ----
 # Online neural voice (best quality when the endpoint is reachable).
-edge-tts @ git+https://github.com/jonata/edge-tts.git@8a5844c3a1d33e4e8f2f3e14535542c0d75d4248
+edge-tts
 
-# Offline neural voice (best without network; needs a voice model, see
-# scripts/download_voice.py). onnxruntime comes with it and is CPU-only.
+# Offline neural voice (best without network; requirements install Piper, but not
+# its voice models. Download one with: python scripts/download_voice.py).
+# onnxruntime comes with it and is CPU-only.
 piper-tts>=1.2.0
 
 # Offline SAPI/espeak fallback, always available. pyttsx3 already requires

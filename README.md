@@ -53,12 +53,54 @@ handshake from some networks outright; `--edge-proxy URL` (or `$EDGE_TTS_PROXY` 
 `$HTTPS_PROXY`) is the way through that.
 
 ```bash
-pip install -r requirements.txt
-python scripts/download_voice.py --pack   # three offline voices -> models/
+python -m pip install -r requirements.txt
 ```
 
+### Install Piper voices for offline use
+
+Installing `piper-tts` installs the Piper engine, but **does not download any voice
+models**. Download a voice once while you have internet access; after that, Piper
+can synthesize speech offline. From the project folder, run:
+
+```bash
+python scripts/download_voice.py                     # default English voice
+python scripts/download_voice.py --pack              # three voices for multiple speakers
+python scripts/download_voice.py --list              # list the voices in --pack
+python scripts/download_voice.py ar_JO-kareem-medium # Arabic voice
+```
+
+The `.onnx` model and its `.onnx.json` config are saved in `models/` and discovered
+automatically. To render without using Edge TTS, explicitly select Piper:
+
+```bash
+python subtitle_to_audio.py myfile.srt --engine piper
+python subtitle_to_audio.py myfile.srt --engine piper --piper-model models/ar_JO-kareem-medium.onnx
+```
+
+Models are large and have individual voice licenses; review the license before
+redistributing downloaded voices. See [`models/README.md`](./models/README.md) for
+more detail.
+
+### Required external tool
+
+FFmpeg is required for time compression, loudness processing, and audio export. On
+Windows, install it with WinGet:
+
+```powershell
+winget install --id Gyan.FFmpeg.Shared --exact
+```
+
+Open a new terminal after installation, then verify it is available on `PATH`:
+
+```powershell
+ffmpeg -version
+```
+
+On macOS, use `brew install ffmpeg`; on Debian/Ubuntu, use `sudo apt install ffmpeg`.
+Python packages do not install FFmpeg.
+
 More than one model in `models/` means `--auto-speakers` can give each character their
-own offline voice: `--pack` installs one female, one male and one British voice.
+own offline voice; `--pack` installs one female, one male and one British voice.
 
 ### Other languages
 
@@ -237,6 +279,8 @@ truncated report behind.
 - A corrupt or truncated cache entry is re-rendered instead of failing the line.
 - Fresh renders, cache entries, reports and the exported audio are all written through
   a staging file and renamed, so no interrupt leaves a half-written deliverable.
+- The render cache directory is removed after a successful delivery; failed exports
+  and strict-gate failures keep it for recovery.
 - If the mix cannot be written, the report still says what the run produced
   (`export_ok: false`) and the exit code is `1` rather than a traceback.
 - Missing music, missing ffmpeg, unreadable input and an empty subtitle file all end in
@@ -245,9 +289,9 @@ truncated report behind.
 ## Performance
 
 Renders are content-addressed (engine + voice + speed + text + the engine's noise
-settings) and cached in `.tts_cache`, so re-runs and long jobs resume instead of
-re-synthesising. Placement and logging stay strictly sequential, so output never
-depends on completion order.
+settings) and cached during the run. A successful delivery removes `.tts_cache`;
+failed exports and strict-gate failures keep the cache for recovery. Placement and
+logging stay strictly sequential, so output never depends on completion order.
 
 Measured on the 82-cue / 5-minute fixture (8 CPU cores, piper, wav export without
 loudnorm, so this isolates rendering):
@@ -255,7 +299,6 @@ loudnorm, so this isolates rendering):
 | run | renders | wall time |
 |---|---|---|
 | cold cache | 89 | 46.0 s |
-| warm cache | **0** (112 hits) | **13.0 s** (3.5x faster) |
 
 Parallelism is engine-aware: `--concurrency` defaults to 4 for a network engine
 (where renders are latency-bound) and 1 for piper, because onnxruntime already uses

@@ -98,6 +98,91 @@ def test_filter_reachable_drops_the_dead_engine(fake_edge, tmp_path, monkeypatch
     assert chain == [dead]          # a lone engine is kept: something beats nothing
 
 
+def test_edge_failure_drains_in_flight_requests_before_piper_fallback(tmp_path, monkeypatch):
+    edge_started = asyncio.Event()
+    fail_edge = asyncio.Event()
+    finish_edge = asyncio.Event()
+    edge_active = 0
+    edge_calls = 0
+    piper_started_after_edge_drained = []
+    audio = Sine(440).to_audio_segment(duration=500)
+
+    class FakeEngine:
+        def __init__(self, name, needs_network=False):
+            self.name = name
+            self.needs_network = needs_network
+            self.base_speed = 1.0
+            self.max_speed = 1.3
+
+        def resolve_voice(self, hint, gender):
+            return hint or self.name
+
+    edge = FakeEngine("edge_tts", needs_network=True)
+    piper = FakeEngine("piper")
+    monkeypatch.setattr(pipeline, "find_piper_models", lambda *args, **kwargs: [])
+    monkeypatch.setattr(pipeline, "build_chain", lambda *args, **kwargs: [edge, piper])
+    monkeypatch.setattr(pipeline, "filter_reachable", lambda chain, out_dir: _async_value(chain))
+    monkeypatch.setattr(
+        pipeline, "load_subtitles",
+        lambda path, **kwargs: LoadResult(
+            cues=[make_cue(i + 1, i * 2100, (i + 1) * 2000, f"Line {i + 1}")
+                  for i in range(3)],
+            fmt="srt", encoding="utf-8", path=str(path),
+        ),
+    )
+
+    async def fake_fit(engine, unit, voice, **kwargs):
+        nonlocal edge_active, edge_calls
+        if engine is edge:
+            edge_active += 1
+            edge_calls += 1
+            if edge_calls == 2:
+                edge_started.set()
+            try:
+                if unit.start_ms == 0:
+                    await fail_edge.wait()
+                    return None
+                await finish_edge.wait()
+            finally:
+                edge_active -= 1
+        else:
+            piper_started_after_edge_drained.append(edge_active == 0)
+        return {
+            "audio": audio, "speed": 1.0, "renders": 1,
+            "engine": engine.name, "voice": voice, "cached": False,
+        }
+
+    def fake_export(segment, path, output_format, **kwargs):
+        with open(path, "wb") as output:
+            output.write(b"audio")
+        return {"ok": True, "loudnorm": False}
+
+    async def run_scenario():
+        monkeypatch.setattr(pipeline, "_fit_with_engine", fake_fit)
+        monkeypatch.setattr(pipeline, "export_audio", fake_export)
+        run = asyncio.create_task(pipeline.generate_audio(
+            str(tmp_path / "race.srt"), output_format="wav", engine="auto",
+            cache_dir=str(tmp_path / "cache"), concurrency=2, level=False,
+            loudnorm=False, stitch=False,
+        ))
+        await asyncio.wait_for(edge_started.wait(), timeout=1)
+        fail_edge.set()
+        await asyncio.sleep(0.05)
+        assert not piper_started_after_edge_drained
+        finish_edge.set()
+        return await run
+
+    report = asyncio.run(run_scenario())
+    assert report is not None
+    assert edge_calls == 2
+    assert piper_started_after_edge_drained
+    assert all(piper_started_after_edge_drained)
+
+
+async def _async_value(value):
+    return value
+
+
 def test_offline_engines_are_never_probed(tmp_path):
     piper = te.PiperEngine(model=str(tmp_path / "x.onnx"))
     assert asyncio.run(te.probe_engine(piper, str(tmp_path))) is True
@@ -317,6 +402,69 @@ def test_cache_invalidate_forgets_one_entry(tmp_path):
     cache.invalidate("key1")
     assert cache.get("key1") is None
     cache.invalidate("never-existed")              # must not raise
+
+
+@pytest.mark.parametrize(("export_ok", "strict", "strict_passed", "cache_removed"), [
+    (True, False, True, True),
+    (True, True, True, True),
+    (True, True, False, False),
+    (False, False, False, False),
+])
+def test_cache_directory_is_removed_only_after_successful_delivery(
+    tmp_path, monkeypatch, export_ok, strict, strict_passed, cache_removed,
+):
+    cache_dir = tmp_path / "cache"
+    audio = (AudioSegment.silent(duration=500) if strict and not strict_passed
+             else Sine(440).to_audio_segment(duration=500))
+    cue = make_cue(1, 0, 2500, "A completed delivery.")
+
+    class FakeEngine:
+        name = "piper"
+        needs_network = False
+        max_speed = 1.3
+
+        def resolve_voice(self, hint, gender):
+            return "voice"
+
+    engine = FakeEngine()
+
+    async def reachable(chain, out_dir):
+        return chain
+
+    async def render(engine, unit, voice, **kwargs):
+        os.makedirs(cache_dir, exist_ok=True)
+        (cache_dir / "render.wav").write_bytes(b"cached render")
+        return {
+            "audio": audio, "speed": 1.0, "renders": 1,
+            "engine": engine.name, "voice": voice, "cached": False,
+        }
+
+    def export(segment, output_path, output_format, **kwargs):
+        if export_ok:
+            with open(output_path, "wb") as output:
+                output.write(b"delivered audio")
+        return {"ok": export_ok, "loudnorm": False}
+
+    monkeypatch.setattr(pipeline, "find_piper_models", lambda *args, **kwargs: [])
+    monkeypatch.setattr(pipeline, "build_chain", lambda *args, **kwargs: [engine])
+    monkeypatch.setattr(pipeline, "filter_reachable", reachable)
+    monkeypatch.setattr(
+        pipeline, "load_subtitles",
+        lambda path, **kwargs: LoadResult(
+            cues=[cue], fmt="srt", encoding="utf-8", path=str(path),
+        ),
+    )
+    monkeypatch.setattr(pipeline, "_fit_with_engine", render)
+    monkeypatch.setattr(pipeline, "export_audio", export)
+
+    report = asyncio.run(pipeline.generate_audio(
+        str(tmp_path / "delivery.srt"), output_format="wav",
+        cache_dir=str(cache_dir), level=False, loudnorm=False, strict=strict,
+    ))
+
+    assert report["export_ok"] is export_ok
+    assert report["strict"]["passed"] is strict_passed
+    assert not cache_dir.exists() if cache_removed else cache_dir.exists()
 
 
 # ------------------------------------------------------------------ fault isolation

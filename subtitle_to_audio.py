@@ -334,7 +334,8 @@ def main(argv=None) -> int:
 
     if shutil.which("ffmpeg") is None:
         print("Error: ffmpeg is required (time compression, loudness, m4a export).")
-        print("  Windows: winget install ffmpeg   |   macOS: brew install ffmpeg   |   "
+        print("  Windows: winget install --id Gyan.FFmpeg.Shared --exact   |   "
+              "macOS: brew install ffmpeg   |   "
               "Linux: sudo apt install ffmpeg")
         return EXIT_SETUP_ERROR
 

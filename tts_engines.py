@@ -685,6 +685,14 @@ class RenderCache:
                     pass
         return removed
 
+    def remove_directory(self) -> bool:
+        """Remove the cache directory after a completed delivery."""
+        if not os.path.isdir(self.directory):
+            return False
+        self.clear()
+        os.rmdir(self.directory)
+        return True
+
 
 def load_rendered(path: str) -> AudioSegment:
     """Read a rendered line (cached or fresh) back as audio."""

@@ -249,7 +249,10 @@ def test_hard_five_minute_srt(tmp_path):
     wav = str(tmp_path / "hard_5min.wav")
     report_path = str(tmp_path / "report.json")
 
-    proc = run_cli(["-p", srt, "-f", "wav", "--metrics", "--report", report_path], timeout=3600)
+    proc = run_cli([
+        "-p", srt, "-f", "wav", "--engine", "piper", "--deterministic",
+        "--metrics", "--report", report_path,
+    ], timeout=3600)
     log = proc.stdout + proc.stderr
 
     assert proc.returncode == 0, log[-3000:]

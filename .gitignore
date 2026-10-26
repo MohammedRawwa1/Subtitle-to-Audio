@@ -135,7 +135,8 @@ dmypy.json
 *_report.json
 
 # Downloaded piper voice models (scripts/download_voice.py)
-models/
+models/*
+!models/README.md
 
 # Render cache
 .tts_cache/

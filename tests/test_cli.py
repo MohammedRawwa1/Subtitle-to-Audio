@@ -267,20 +267,24 @@ def test_explicit_speaker_voices_are_used_and_unknown_names_are_reported(tmp_pat
 
 
 @needs_engine
-def test_cache_makes_the_second_run_reuse_renders(tmp_path):
-    srt = write_srt(str(tmp_path / "c.srt"), [(0, 2500, "Cache me once and reuse me.")])
+def test_successful_delivery_removes_cache_before_the_next_run(tmp_path):
+    srt = write_srt(str(tmp_path / "c.srt"), [(0, 2500, "Cache this during the run.")])
     cache_dir = str(tmp_path / "cache")
 
     first = run_cli(["-p", srt, "-f", "wav", "--cache-dir", cache_dir, "--report",
                      str(tmp_path / "r1.json")])
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert not os.path.exists(cache_dir)
+
     second = run_cli(["-p", srt, "-f", "wav", "--cache-dir", cache_dir, "--report",
                       str(tmp_path / "r2.json")])
-    assert first.returncode == 0 and second.returncode == 0
+    assert second.returncode == 0, second.stdout + second.stderr
 
     stats1 = json.loads((tmp_path / "r1.json").read_text(encoding="utf-8"))["cache"]
     stats2 = json.loads((tmp_path / "r2.json").read_text(encoding="utf-8"))["cache"]
     assert stats1["hits"] == 0 and stats1["misses"] >= 1
-    assert stats2["hits"] >= 1, f"cache did not serve the second run: {stats2}"
+    assert stats2["hits"] == 0 and stats2["misses"] >= 1
+    assert not os.path.exists(cache_dir)
 
 
 @needs_engine

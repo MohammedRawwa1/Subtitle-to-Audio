@@ -23,6 +23,7 @@ import urllib.request
 
 BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 DEFAULT_VOICE = "en_US-lessac-medium"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # One female, one male, one British: enough for a two-hander or a narrator plus two
 # characters, and all "medium" quality so they are a fair match for each other.
@@ -66,7 +67,8 @@ def main(argv=None) -> int:
     parser.add_argument("--pack", action="store_true",
                         help="install the multi-speaker set instead of a single voice")
     parser.add_argument("--list", action="store_true", help="show what --pack installs")
-    parser.add_argument("--dir", default="models", help="destination directory (default: models)")
+    parser.add_argument("--dir", default=os.path.join(PROJECT_ROOT, "models"),
+                        help="destination directory (default: project models/)")
     args = parser.parse_args(argv)
 
     if args.list:
