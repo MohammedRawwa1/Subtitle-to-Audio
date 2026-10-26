@@ -61,6 +61,7 @@ PIPER_DETERMINISTIC_NOISE_W = 0.0
 # ------------------------------------------------------------------- edge_tts
 
 EDGE_VOICE_DEFAULT = "en-US-JennyNeural"
+ARABIC_EDGE_VOICE = "ar-AE-HamdanNeural"
 
 AUTO_VOICES = {
     "female": ["en-US-AriaNeural", "en-US-JennyNeural", "en-US-SarahNeural"],
@@ -122,8 +123,10 @@ def detect_voice_gender(text: str) -> str:
 
 
 def pick_auto_voice(text: str, gender: str = None) -> str:
-    """Best edge_tts ShortName for this text; an explicit gender always wins."""
+    """Best edge_tts ShortName for this text; Arabic script selects an Arabic voice."""
     try:
+        if detect_language(text) == "ar":
+            return ARABIC_EDGE_VOICE
         chosen = gender if gender in ("female", "male") else detect_voice_gender(text)
         candidates = AUTO_VOICES.get(chosen, AUTO_VOICES["neutral"])
         return candidates[0] if candidates else EDGE_VOICE_DEFAULT

@@ -240,6 +240,7 @@ def test_parse_rate_pct(raw, expected):
 def test_auto_voice_pool_is_ordered_by_quality():
     assert te.pick_auto_voice("She walked into the room", "female") in te.AUTO_VOICES["female"]
     assert te.pick_auto_voice("He said nothing at all", "male") in te.AUTO_VOICES["male"]
+    assert te.pick_auto_voice("مرحباً بكم في الدرس", "male") == te.ARABIC_EDGE_VOICE
     assert te.pick_auto_voice("", None) == te.EDGE_VOICE_DEFAULT or te.pick_auto_voice("", None)
 
 

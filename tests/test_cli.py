@@ -6,7 +6,7 @@ import os
 import pytest
 
 import subtitle_to_audio as cli
-from tests.conftest import needs_engine, run_cli, write_srt
+from tests.conftest import needs_engine, needs_ffmpeg, run_cli, write_srt
 
 
 def parser_flags():
@@ -17,7 +17,7 @@ def parser_flags():
     return sorted(set(flags))
 
 DOCUMENTED_FLAGS = [
-    "--path", "--format", "--engine", "--voice", "--piper-model", "--gender", "--auto-voice",
+    "--path", "--format", "--output-dir", "--engine", "--voice", "--piper-model", "--gender", "--auto-voice",
     "--speaker-voices", "--auto-speakers", "--piper-noise", "--piper-noise-w", "--deterministic",
     "--edge-proxy", "--base-rate", "--max-rate", "--pyttsx3-rate",
     "--max-wpm", "--max-speed", "--no-stretch", "--stretch-tolerance", "--fit-attempts",
@@ -105,6 +105,19 @@ def test_positional_path_is_the_same_as_the_flag(tmp_path):
     flagged = run_cli(["-p", srt, "-f", "wav"], timeout=600)
     assert flagged.returncode == 0, flagged.stdout + flagged.stderr
     assert out.exists()
+
+
+@needs_engine
+@needs_ffmpeg
+def test_output_dir_receives_the_generated_audio(tmp_path):
+    srt = write_srt(str(tmp_path / "input.srt"), [(0, 2500, "Put this audio in results.")])
+    output_dir = tmp_path / "results" / "nested"
+
+    proc = run_cli([srt, "-f", "wav", "--output-dir", str(output_dir)], timeout=600)
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (output_dir / "input.wav").exists()
+    assert not (tmp_path / "input.wav").exists()
 
 
 def test_no_input_at_all_asks_for_one(tmp_path):

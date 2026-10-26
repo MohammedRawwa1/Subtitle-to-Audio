@@ -216,8 +216,9 @@ async def _fit_with_engine(engine, unit, voice: str, *, tolerance: float, fit_at
 async def generate_audio(
     path: str,
     *,
+    output_dir: str | None = None,
     preview: int = None,
-    voice: str = None,
+    voice: str | None = None,
     gender: str = "female",
     output_format: str = "m4a",
     base_rate_percent: str = "+0%",
@@ -250,8 +251,8 @@ async def generate_audio(
     music_volume: float = 0.25,
     metrics: bool = False,
     report_path: str = None,
-    lexicon: dict = None,
-    speaker_voices: dict = None,
+    lexicon: dict | None = None,
+    speaker_voices: dict | None = None,
     auto_speakers: bool = False,
     strict: bool = False,
 ) -> dict | None:
@@ -298,6 +299,13 @@ async def generate_audio(
         # Permission denied, a directory, a share that went away: still a clean exit.
         print(f"Cannot read {path}: {e}")
         return None
+
+    if output_dir is not None:
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+        except OSError as e:
+            print(f"Cannot create output directory {output_dir}: {e}")
+            return None
 
     preview_cues = None
     if preview:
@@ -385,8 +393,8 @@ async def generate_audio(
         print(f"Stitched {stitched_groups} multi-cue sentence(s) into a single phrase")
     print(f"Render units: {len(units)}")
 
-    voices = _speaker_voice_map(units, chain[0].name, voice, speaker_voices, auto_speakers,
-                                piper_models=piper_models or ())
+    voices = _speaker_voice_map(units, chain[0].name, voice, speaker_voices or {},
+                                auto_speakers, piper_models=piper_models or ())
     piper_model = default_piper or piper_model
     for name, hint in voices.items():
         print(f"  speaker {name} -> {hint or chain[0].name + ' default'}")
@@ -599,8 +607,11 @@ async def generate_audio(
         output = output + AudioSegment.silent(duration=total_duration_ms - len(output))
 
     stem = os.path.splitext(path)[0]
-    output_path = (f"{stem}.preview{FORMATS[output_format]['ext']}" if preview_cues
-                   else stem + FORMATS[output_format]["ext"])
+    output_stem = os.path.splitext(os.path.basename(path))[0] if output_dir is not None else stem
+    output_name = (f"{output_stem}.preview{FORMATS[output_format]['ext']}" if preview_cues
+                   else f"{output_stem}{FORMATS[output_format]['ext']}")
+    output_path = (os.path.join(output_dir, output_name) if output_dir is not None
+                   else output_name)
     export_info = export_audio(
         output, output_path, output_format,
         loudnorm=loudnorm, music=music, music_volume=music_volume,

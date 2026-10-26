@@ -14,8 +14,8 @@ python subtitle_to_audio.py --guide                 # every option on one page, 
 ```
 
 On Windows, run [`batch_srt_to_audio.bat`](./batch_srt_to_audio.bat) to process every
-`.srt` file in the `srt` folder with the `ar-AE-HamdanNeural` voice. Audio files are
-saved beside their subtitles; no reports are generated.
+`.srt` file in the `srt` folder. It selects an Arabic or English Edge voice based on
+the subtitle script and saves all audio in `results`; no reports are generated.
 
 Nothing is required but the subtitle file: the engine is auto-picked, the voice is chosen
 for the text, and the output lands beside the input. Every other choice is a flag you can
@@ -196,6 +196,7 @@ python subtitle_to_audio.py two-hander.srt --music bed.mp3 --music-volume 0.2
 |------|-------------|---------|
 | *(positional)*, `-p`, `--path` | Subtitle file (`.srt`, `.vtt`, `.ass`, `.ssa`, `.sub`, `.txt`) | *required* |
 | `-f`, `--format` | Output: `wav`, `mp3`, `m4a`, `ogg` | `m4a` |
+| `--output-dir` | Directory for generated audio | beside the subtitle |
 | `--preview [N]` | Speak only the first N cues, write `<name>.preview.<ext>` | off (`3` when bare) |
 | `--voices` | List the voices installed on this machine and exit | off |
 | `--guide` | Print every option on one page and exit | off |
@@ -206,7 +207,7 @@ python subtitle_to_audio.py two-hander.srt --music bed.mp3 --music-volume 0.2
 | `--deterministic` | turn piper's duration noise off so re-runs match | off |
 | `--edge-proxy` | proxy URL for the online engine (else `$EDGE_TTS_PROXY`, `$HTTPS_PROXY`) | – |
 | `--gender` | Gender hint for fallback voices | `female` |
-| `--auto-voice` | Pick the voice from the subtitle text | off |
+| `--auto-voice` | Pick an Arabic voice for Arabic script; otherwise choose from the subtitle text | off |
 | `--speaker-voices` | Per-speaker voice, `NAME=VOICE`, repeatable | – |
 | `--auto-speakers` | Detect `NAME:` tags and rotate voices | off |
 | `--base-rate` | Natural starting rate; fitting never goes below it | `+0%` |

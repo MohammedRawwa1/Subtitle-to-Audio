@@ -54,7 +54,8 @@ EVERY CHOICE IS A FLAG -- pick what you want, ignore the rest
     --voice NAME                            edge_tts voice, e.g. en-US-GuyNeural
     --piper-model PATH                      offline neural voice, e.g. models/ar_JO-kareem-medium.onnx
     --gender {male,female}                  hint for engines that choose for you
-    --auto-voice                            choose the voice from the subtitle text
+    --auto-voice                            choose a voice from the subtitle text/script
+    --output-dir DIR                        save audio in DIR instead of beside the subtitles
     --speaker-voices NAME=VOICE             one voice per speaker (repeatable or comma separated)
     --auto-speakers                         rotate voices for "NAME:" labels in the text
     --piper-noise FLOAT                     piper liveliness (model default is usually 0.667)
@@ -150,6 +151,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="same as the positional path (kept for scripts)")
     parser.add_argument("-f", "--format", choices=list(FORMATS), default="m4a",
                         help="output audio format (default: m4a)")
+    parser.add_argument("--output-dir",
+                        help="directory for generated audio (default: beside the subtitle)")
     parser.add_argument("--preview", nargs="?", type=int, const=3, metavar="N",
                         help="speak only the first N cues (default 3) so a long file can be "
                              "checked in seconds; writes <name>.preview.<ext>")
@@ -376,6 +379,7 @@ async def _run(args, path, lexicon, speaker_voices):
     """Build the call from the parsed arguments and hand it to the pipeline."""
     return await generate_audio(
         path=path,
+        output_dir=args.output_dir,
         preview=args.preview,
         voice=None if args.auto_voice else args.voice,
         gender=args.gender,
